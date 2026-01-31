@@ -4,7 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LendingLoans - Trusted Online Lending</title>
-  <script src="/_sdk/element_sdk.js"></script>
+  <script src="/_sdk/element_sdk.js"></script><!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5KMPVXBS7B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-5KMPVXBS7B');
+  </script><!-- End Google Analytics -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
   <style>
@@ -507,6 +514,216 @@
       font_size: 16
     };
 
+    // ============ ANALYTICS SYSTEM ============
+    class AnalyticsTracker {
+      constructor() {
+        this.sessionId = this.generateSessionId();
+        this.visitData = this.loadAnalytics();
+        this.currentSession = {
+          startTime: Date.now(),
+          clicks: [],
+          scrollDepth: 0,
+          mouseMovements: 0,
+          timeSpent: 0,
+          interactions: []
+        };
+        this.initTracking();
+      }
+
+      generateSessionId() {
+        return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      }
+
+      loadAnalytics() {
+        const stored = localStorage.getItem('lendingLoansAnalytics');
+        if (stored) {
+          return JSON.parse(stored);
+        }
+        return {
+          totalVisits: 0,
+          totalClicks: 0,
+          phoneClicks: 0,
+          applyClicks: 0,
+          formSubmissions: 0,
+          sessions: [],
+          botScore: 0
+        };
+      }
+
+      saveAnalytics() {
+        localStorage.setItem('lendingLoansAnalytics', JSON.stringify(this.visitData));
+      }
+
+      initTracking() {
+        // Track page visit
+        this.visitData.totalVisits++;
+        this.saveAnalytics();
+
+        // Track mouse movement (human behavior)
+        let mouseMoveCount = 0;
+        document.addEventListener('mousemove', () => {
+          mouseMoveCount++;
+          this.currentSession.mouseMovements = mouseMoveCount;
+        });
+
+        // Track scroll depth (engagement)
+        document.addEventListener('scroll', () => {
+          const scrollPercent = (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100;
+          this.currentSession.scrollDepth = Math.max(this.currentSession.scrollDepth, Math.round(scrollPercent));
+        });
+
+        // Track all clicks
+        document.addEventListener('click', (e) => {
+          this.trackClick(e);
+        });
+
+        // Track time on page
+        setInterval(() => {
+          this.currentSession.timeSpent = Math.round((Date.now() - this.currentSession.startTime) / 1000);
+        }, 1000);
+
+        // Save session on page unload
+        window.addEventListener('beforeunload', () => {
+          this.endSession();
+        });
+
+        console.log('Analytics initialized. Session ID:', this.sessionId);
+      }
+
+      trackClick(event) {
+        const target = event.target.closest('a, button');
+        if (!target) return;
+
+        const clickData = {
+          timestamp: Date.now(),
+          element: target.tagName,
+          text: target.textContent.trim().substring(0, 50),
+          href: target.href || null,
+          id: target.id || null
+        };
+
+        this.currentSession.clicks.push(clickData);
+        this.visitData.totalClicks++;
+
+        // Track specific actions
+        if (target.href && target.href.includes('tel:')) {
+          this.visitData.phoneClicks++;
+          this.currentSession.interactions.push('phone_click');
+          console.log('📞 Phone click tracked');
+        } else if (target.href && target.href.includes('#apply')) {
+          this.visitData.applyClicks++;
+          this.currentSession.interactions.push('apply_click');
+          console.log('📝 Apply button clicked');
+        }
+
+        this.saveAnalytics();
+      }
+
+      trackFormSubmission() {
+        this.visitData.formSubmissions++;
+        this.currentSession.interactions.push('form_submission');
+        this.saveAnalytics();
+        console.log('✅ Form submission tracked');
+      }
+
+      calculateBotScore() {
+        // Bot detection heuristics
+        let score = 0;
+        
+        // Very low mouse movement = suspicious
+        if (this.currentSession.mouseMovements < 5) score += 30;
+        else if (this.currentSession.mouseMovements < 20) score += 10;
+        
+        // No scrolling = suspicious
+        if (this.currentSession.scrollDepth === 0) score += 20;
+        
+        // Very short visit = suspicious
+        if (this.currentSession.timeSpent < 3) score += 25;
+        
+        // No interactions = suspicious
+        if (this.currentSession.interactions.length === 0) score += 15;
+        
+        // Too many clicks too fast = suspicious
+        if (this.currentSession.clicks.length > 10 && this.currentSession.timeSpent < 5) score += 20;
+
+        return Math.min(score, 100); // Cap at 100
+      }
+
+      endSession() {
+        const botScore = this.calculateBotScore();
+        const isLikelyBot = botScore > 50;
+
+        const sessionSummary = {
+          sessionId: this.sessionId,
+          timestamp: new Date().toISOString(),
+          duration: this.currentSession.timeSpent,
+          clicks: this.currentSession.clicks.length,
+          mouseMovements: this.currentSession.mouseMovements,
+          scrollDepth: this.currentSession.scrollDepth,
+          interactions: this.currentSession.interactions,
+          botScore: botScore,
+          isLikelyBot: isLikelyBot
+        };
+
+        this.visitData.sessions.push(sessionSummary);
+        
+        // Keep only last 50 sessions
+        if (this.visitData.sessions.length > 50) {
+          this.visitData.sessions = this.visitData.sessions.slice(-50);
+        }
+
+        this.saveAnalytics();
+        console.log('Session ended:', sessionSummary);
+      }
+
+      getAnalyticsSummary() {
+        const humanSessions = this.visitData.sessions.filter(s => !s.isLikelyBot);
+        const botSessions = this.visitData.sessions.filter(s => s.isLikelyBot);
+        
+        return {
+          overview: {
+            totalVisits: this.visitData.totalVisits,
+            totalClicks: this.visitData.totalClicks,
+            phoneClicks: this.visitData.phoneClicks,
+            applyClicks: this.visitData.applyClicks,
+            formSubmissions: this.visitData.formSubmissions
+          },
+          currentSession: {
+            duration: this.currentSession.timeSpent + 's',
+            clicks: this.currentSession.clicks.length,
+            mouseMovements: this.currentSession.mouseMovements,
+            scrollDepth: this.currentSession.scrollDepth + '%',
+            botScore: this.calculateBotScore() + '%'
+          },
+          sessions: {
+            total: this.visitData.sessions.length,
+            human: humanSessions.length,
+            bot: botSessions.length,
+            humanPercentage: Math.round((humanSessions.length / this.visitData.sessions.length) * 100) + '%'
+          }
+        };
+      }
+    }
+
+    // Initialize analytics
+    const analytics = new AnalyticsTracker();
+
+    // Make analytics accessible via console
+    window.getAnalytics = () => {
+      const summary = analytics.getAnalyticsSummary();
+      console.log('=== LENDINGLOANS ANALYTICS ===');
+      console.log('Overview:', summary.overview);
+      console.log('Current Session:', summary.currentSession);
+      console.log('Sessions:', summary.sessions);
+      console.log('Recent Sessions:', analytics.visitData.sessions.slice(-10));
+      return summary;
+    };
+
+    // Log analytics summary every 30 seconds
+    setInterval(() => {
+      console.log('📊 Analytics Update:', analytics.getAnalyticsSummary());
+    }, 30000);
+
     // Form submission with 24-hour limit
     const loanForm = document.getElementById('loan-form');
     const submitBtn = document.getElementById('submit-btn');
@@ -561,6 +778,9 @@
         if (response.ok) {
           // Store submission timestamp
           localStorage.setItem('lastLoanSubmission', Date.now().toString());
+          
+          // Track form submission in analytics
+          analytics.trackFormSubmission();
           
           formMessage.innerHTML = '<div class="text-center"><div class="text-3xl font-bold text-green-800 mb-3">Application Submitted Successfully!</div><div class="text-xl text-green-700 mb-2">Thank you for applying!</div><div class="text-lg text-green-600">Our team will contact you within 24 hours.</div></div>';
           formMessage.className = 'p-10 rounded-xl bg-green-50 border-4 border-green-400 text-center shadow-2xl animate-fade-in-up';
@@ -716,5 +936,5 @@
       });
     }
   </script>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9c668cba5200595d',t:'MTc2OTgzNDYyMy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9c673c43c6b6b117',t:'MTc2OTg0MTgxMy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
